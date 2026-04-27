@@ -15,7 +15,8 @@ official theC64 joystick.
 | Raspberry Pi Pico | Standard or Pico W — USB-capable |
 | DE-9 (DB9) female socket | Mounts on the case; connects to Genesis pad |
 | USB-A cable / connector | Pico micro-USB → C64 Maxi USB port |
-| 10× 1kΩ resistors (optional) | Series protection on input lines |
+| 10× 1kΩ resistors (optional) | Series protection on input lines — simpler build |
+| 74AHCT245 level shifter (optional) | Cleaner 5V→3.3V translation — recommended for permanent builds |
 | Small enclosure | Any project box |
 
 ---
@@ -135,15 +136,91 @@ numbers.
 
 ## Schematic Notes
 
+Genesis signals are active-low (pressed = 0V). The Pico's internal pull-ups
+hold unconnected/released lines HIGH.
+
+There are two ways to protect the Pico from the Genesis controller's 5V logic.
+Pick whichever suits your build:
+
+### Option A — 1kΩ resistors (quick & simple)
+
+Drop one resistor in series on each of the 6 data lines. That's it.
+
 ```
 Genesis DB9 pin ──[1kΩ]──── Pico GPIO (input, internal pull-up enabled)
 Genesis +5V (pin 5) ──────── Pico VBUS
 Genesis GND (pin 8) ──────── Pico GND
-Pico GP14 ────────────────── Genesis SELECT (DB9 pin 7)
+Pico GP14 ────────────────── Genesis SELECT (DB9 pin 7)   ← no resistor needed
 ```
 
-Genesis signals are active-low (pressed = 0V). The Pico's internal pull-ups
-hold unconnected/released lines HIGH.
+Good for breadboard prototyping. Not as clean electrically, but works fine.
+
+---
+
+### Option B — 74AHCT245 level shifter (recommended for permanent builds)
+
+The 74AHCT245 is an 8-channel buffer/transceiver. Its A-side inputs are
+5V-tolerant even when the chip itself runs on 3.3V, so it neatly converts
+the Genesis 5V signals down to safe 3.3V levels for the Pico. No resistors
+needed on the data lines.
+
+#### How the chip works (in plain English)
+
+- Power it from the Pico's **3.3V rail**, not 5V.
+- Signals enter on the **A side** (5V from the Genesis) and come out on the
+  **B side** (3.3V, safe for the Pico).
+- **DIR pin HIGH** = data flows A → B (that's always what we want here).
+- **!OE pin LOW** = chip is active (tie it to GND permanently).
+- The SELECT output line (Pico → Genesis) bypasses the chip entirely — the
+  Genesis is happy with 3.3V on that line.
+
+#### Wiring table
+
+| 74AHCT245 Pin | Name | Connect to |
+|---|---|---|
+| 20 | VCC | Pico pin 36 (3.3V OUT) |
+| 10 | GND | Pico GND |
+| 1 | DIR | Pico 3.3V (tie HIGH — A→B direction always) |
+| 19 | !OE | GND (tie LOW — always enabled) |
+| 2 | A1 | Genesis DB9 pin 1 (Up / Z) |
+| 3 | A2 | Genesis DB9 pin 2 (Down / Y) |
+| 4 | A3 | Genesis DB9 pin 3 (Left / X) |
+| 5 | A4 | Genesis DB9 pin 4 (Right / Mode) |
+| 6 | A5 | Genesis DB9 pin 6 (B / A) |
+| 7 | A6 | Genesis DB9 pin 9 (C / Start) |
+| 8–9 | A7, A8 | Unused — leave floating |
+| 18 | B1 | Pico GP2 (pin 4) |
+| 17 | B2 | Pico GP3 (pin 5) |
+| 16 | B3 | Pico GP4 (pin 6) |
+| 15 | B4 | Pico GP5 (pin 7) |
+| 14 | B5 | Pico GP6 (pin 9) |
+| 13 | B6 | Pico GP7 (pin 10) |
+
+#### Signal flow diagram
+
+```
+                    74AHCT245  (VCC = 3.3V)
+                  ┌─────────────────────┐
+Genesis DB9 pin 1 ─── A1          B1 ───── Pico GP2
+Genesis DB9 pin 2 ─── A2          B2 ───── Pico GP3
+Genesis DB9 pin 3 ─── A3          B3 ───── Pico GP4
+Genesis DB9 pin 4 ─── A4          B4 ───── Pico GP5
+Genesis DB9 pin 6 ─── A5          B5 ───── Pico GP6
+Genesis DB9 pin 9 ─── A6          B6 ───── Pico GP7
+         3.3V ──────── DIR       !OE ───── GND
+                  └─────────────────────┘
+
+Genesis DB9 pin 5 (+5V) ──────────────────── Pico VBUS (pin 40)
+Genesis DB9 pin 8 (GND) ──────────────────── Pico GND
+Pico GP14 (pin 19) ────────────────────────── Genesis DB9 pin 7 (SELECT)
+```
+
+> **Tip:** Place a **100 nF ceramic capacitor** between pin 20 (VCC) and
+> pin 10 (GND) as close to the chip as possible. This decoupling cap
+> suppresses switching noise and is standard good practice on any IC.
+
+With the 74AHCT245 in place you do **not** need the 1kΩ resistors on the
+data lines — the chip handles everything.
 
 ---
 
