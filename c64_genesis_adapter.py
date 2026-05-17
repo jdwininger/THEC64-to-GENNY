@@ -37,8 +37,14 @@ the SELECT output (GP14) — not 13 separate pins.
 """
 
 import time
-import usb.device
-from usb.device.hid import HIDInterface
+try:
+    import usb.device
+    from usb.device.hid import HIDInterface
+except ImportError as exc:
+    raise RuntimeError(
+        "This firmware requires a MicroPython build with usb.device HID support. "
+        "Install a current RPI_PICO MicroPython UF2 that includes usb.device."
+    ) from exc
 
 # ---------------------------------------------------------------------------
 # GPIO pin assignments  (change these to match your wiring)
@@ -56,6 +62,11 @@ PIN_DB9_9 = Pin(7,  Pin.IN, Pin.PULL_UP)   # DB9 pin 9: C (SELECT-HIGH) / Start 
 
 # SELECT strobe output — drives DB9 pin 7
 PIN_SELECT = Pin(14, Pin.OUT)
+
+# Genesis 6-button controllers need SELECT held LOW long enough to reset
+# their internal read counter between full read sequences.
+SELECT_SETTLE_US = 20
+SELECT_RESET_US = 1500
 
 # ---------------------------------------------------------------------------
 # HID descriptor — mirrors theC64 joystick exactly
@@ -127,7 +138,12 @@ class C64JoystickHID(HIDInterface):
 
 def _pulse_select(state: bool):
     PIN_SELECT.value(1 if state else 0)
-    time.sleep_us(20)   # ≥20 µs settling time
+    time.sleep_us(SELECT_SETTLE_US)
+
+
+def _reset_select_counter():
+    PIN_SELECT.value(0)
+    time.sleep_us(SELECT_RESET_US)
 
 
 def read_genesis_6btn() -> dict:
@@ -156,8 +172,10 @@ def read_genesis_6btn() -> dict:
     """
     state = {k: False for k in ("up","down","left","right","a","b","c","x","y","z","start","mode")}
 
+    # Hold SELECT low long enough to force the controller back to cycle 1.
+    _reset_select_counter()
+
     # --- 1st LOW: read A and Start from DB9 pins 6 and 9 ---
-    _pulse_select(False)
     state["a"]     = not PIN_DB9_6.value()
     state["start"] = not PIN_DB9_9.value()
     # Up/Down also valid here; overwritten below from HIGH cycle
@@ -187,8 +205,9 @@ def read_genesis_6btn() -> dict:
     state["x"]    = not PIN_DB9_3.value()
     state["mode"] = not PIN_DB9_4.value()
 
-    # --- 4th LOW: reset controller's internal counter ---
+    # --- 4th LOW: complete sequence, then hold LOW to reset for next poll ---
     _pulse_select(False)
+    _reset_select_counter()
 
     return state
 
@@ -255,6 +274,9 @@ def main():
 
     print("USB connected — entering main loop")
 
+    # Keep SELECT low when idle so the next read starts from cycle 1.
+    _reset_select_counter()
+
     last_report = None
 
     while True:
@@ -266,7 +288,7 @@ def main():
             hid.send_state(x, y, buttons)
             last_report = report
 
-        time.sleep_us(500)   # ~2 kHz poll rate — well within USB HID limits
+        time.sleep_us(500)   # Additional small idle delay between report checks
 
 
 if __name__ == "__main__":

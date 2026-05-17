@@ -89,16 +89,75 @@ the button for jumping.
 
 ## Software Setup
 
-1. **Flash MicroPython with USB device support** onto the Pico.
-   The standard Pico MicroPython build (≥ 1.22) includes `usb.device`.
-   Download from: https://micropython.org/download/RPI_PICO/
+### Option A (recommended): CircuitPython HID
 
-2. **Copy the firmware** to the Pico:
+Use this option if your MicroPython build does not provide `usb.device`.
+
+1. **Flash CircuitPython** for Raspberry Pi Pico.
+   Download from: https://circuitpython.org/board/raspberry_pi_pico/
+
+2. **Copy both firmware files** from this repo to the root of the CIRCUITPY drive:
+   - `circuitpython/boot.py` -> `/boot.py`
+   - `circuitpython/code.py` -> `/code.py`
+
+3. **Power-cycle or reset** the Pico after copying `boot.py`.
+   USB HID descriptors are loaded at boot, so this reset is required.
+
+4. **Connect and test:**
+   - Plug the Pico into the C64 Maxi's USB port.
+   - The C64 Maxi should detect it as a joystick device.
+   - No driver installation needed.
+
+#### CircuitPython live debug mode (optional)
+
+If you want to verify wiring and button reads in real time:
+
+1. Open `circuitpython/code.py` and set `DEBUG_SERIAL = True`.
+2. Keep the default `DEBUG_PRINT_INTERVAL_MS = 75` (or increase it to reduce logs).
+3. Open the CircuitPython serial console (`/dev/ttyACM*` on Linux).
+4. Press buttons and D-pad directions.
+
+You will see lines like:
+```
+GEN buttons=left,b | report=(x=-127, y=0, bits=0b00000001)
+```
+
+Meaning:
+- `buttons=` shows raw Genesis inputs currently detected.
+- `report=` shows exactly what HID packet is being sent to theC64.
+
+#### CircuitPython raw pin-phase debug (wiring diagnostics)
+
+To inspect raw line levels during each SELECT phase:
+
+1. In `circuitpython/code.py`, set both:
+   - `DEBUG_SERIAL = True`
+   - `DEBUG_RAW_PHASES = True`
+2. Keep `DEBUG_RAW_PRINT_INTERVAL_MS = 120` or raise it if output is too fast.
+3. Watch for lines like:
+```
+RAW p[1,2,3,4,6,9] L1:[1,1,1,1,0,1] H1:[1,1,1,1,1,1] L2:[1,1,1,1,0,1] H2:[1,1,1,1,1,1] L3:[1,1,1,1,0,1] H3:[1,1,1,1,1,1] L4:[1,1,1,1,0,1]
+```
+
+How to read it:
+- `p[1,2,3,4,6,9]` means DB9 pins sampled in that order.
+- Each phase block (`L1`, `H1`, `L2`, `H2`, `L3`, `H3`, `L4`) corresponds to the SELECT sequence.
+- Values are active-low: `0 = asserted/pressed`, `1 = released`.
+- For example, pressing `B` should usually drive DB9 pin 6 low on HIGH phases (`H1/H2/H3`).
+- Pressing `A` should usually drive DB9 pin 6 low on LOW phases (`L1/L2/L3/L4`).
+
+### Option B: MicroPython usb.device HID
+
+1. **Flash MicroPython with USB device support** onto the Pico.
+   Some builds do not include `usb.device`. Verify in REPL:
+   - `import usb`
+   - `import usb.device`
+   - `from usb.device.hid import HIDInterface`
+
+2. **Copy the MicroPython firmware** to the Pico:
    ```
    mpremote cp c64_genesis_adapter.py :main.py
    ```
-   Or drag-and-drop `c64_genesis_adapter.py` onto the Pico's USB drive
-   and rename it `main.py`.
 
 3. **Connect and test:**
    - Plug the Pico into the C64 Maxi's USB port.
@@ -229,6 +288,8 @@ data lines — the chip handles everything.
 | File | Description |
 |------|-------------|
 | `c64_genesis_adapter.py` | MicroPython firmware — copy to Pico as `main.py` |
+| `circuitpython/boot.py` | CircuitPython USB HID descriptor setup (must be copied as `/boot.py`) |
+| `circuitpython/code.py` | CircuitPython runtime firmware (copy as `/code.py`) |
 | `BUTTON_MAPPING.md` | Detailed button mapping reference |
 | `README.md` | This file |
 | `images/Raspberry Pi Pico GPIO pins THEC64 to Genny.png` | Pinout/wiring diagram (raster) |

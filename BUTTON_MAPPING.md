@@ -77,5 +77,6 @@ When `A` is pressed:
   both "joystick up" and the HID button signal are asserted — covering all
   C64 games regardless of whether they use the button or the axis for jumping.
 
-This behaviour is hardcoded in `genesis_to_c64()` in `c64_genesis_adapter.py`
-and is always active; there is no runtime toggle.
+This behaviour is hardcoded in `genesis_to_c64()` in both
+`c64_genesis_adapter.py` (MicroPython) and `circuitpython/code.py`
+(CircuitPython), and is always active; there is no runtime toggle.
